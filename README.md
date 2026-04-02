@@ -76,7 +76,7 @@ ProjectName/
 |   |-- Project_Schedule_Template.pdf
 |   |-- System_Design_Overview-1.pdf
 |-- Pseudocode/
-|   |-- Pseudocode.txt
+|   |-- Pseudocode.pdf
 |-- src/
 |   |-- TrafficLight.cpp
 |-- images/
