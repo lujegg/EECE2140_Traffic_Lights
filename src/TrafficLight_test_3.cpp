@@ -10,32 +10,46 @@
 
 using namespace std;
 
-// Signal states
+// Part 1: Defining Traffic Light States (Enumeration Type)
+// This part of the code defines the various states that the traffic lights can display, using an enumeration type to bind the state name and its specific meaning together.
+// Principle: C++'s enum class makes each state a fixed name, so the program can directly use the name (e.g., CarSignal::Red) to represent the red light, making it less prone to errors.
+
+// Status of vehicle traffic lights
 enum class CarSignal {
-    Red, Yellow, Green,
-    RedArrow, YellowArrow, GreenArrow,
-    FlashingRed, FlashingRedArrow
+    Red, Yellow, Green,   // Regular red, yellow, and green
+    RedArrow, YellowArrow, GreenArrow, // Arrow light (for left turns only)
+    FlashingRed, FlashingRedArrow // Flashing red light (for fault or power failure mode)
 };
 
+// Pedestrian traffic light status
 enum class PedSignal {
-    DontWalk, Walk, FlashingDontWalk, Flashing
+    DontWalk, Walk, FlashingDontWalk, Flashing   // No passage, Pass, Flashing prohibition, Normal flashing
 };
 
-// Cycle phases for the state machine
+
+// Part Two: Defining the Phases (Phase) of the Traffic Light Cycle
+// This part of the code lists all the different phases in the entire traffic light cycle, each phase corresponding to a set of lights.
+// Principle: A complete traffic light cycle is broken down into multiple smaller phases, such as "green light for left turns from north to south," "green light for straight traffic from north to south," and "all red," etc.
+// The program executes each phase sequentially, with each phase lasting for a certain period, thus achieving automatic traffic light switching.
 enum class Phase {
-    NS_Left_Green, NS_Left_Yellow, NS_Left_AllRed,
-    NS_Through_Green, NS_Through_Yellow, AllRed_To_EW,
-    EW_Left_Green, EW_Left_Yellow, EW_Left_AllRed,
-    EW_Through_Green, EW_Through_Yellow, AllRed_To_NS
+    NS_Left_Green, NS_Left_Yellow, NS_Left_AllRed, // Turn left from north to south: green → yellow → all red
+    NS_Through_Green, NS_Through_Yellow, AllRed_To_EW,  // Northbound straight travel: Green → Yellow → All red (Preparing to switch to eastbound/westbound)
+    EW_Left_Green, EW_Left_Yellow, EW_Left_AllRed,  // Turn left from east to west: green → yellow → all red
+    EW_Through_Green, EW_Through_Yellow, AllRed_To_NS  // East-west straight traffic: green → yellow → all red (preparing to switch back to north-south)
 };
+
+// Part 3: A structure storing the current state of all lights
+// This structure stores the color that each direction and each type of light should display at a given moment.
+// Principle: A single structure packages the states of 8 lights (north-south straight, north-south left turn, east-west straight, east-west left turn, north-south pedestrian, east-west pedestrian) together,
+// for easy one-time retrieval and output.
 
 struct IntersectionState {
-    CarSignal nsThrough;
-    CarSignal nsLeft;
-    CarSignal ewThrough;
-    CarSignal ewLeft;
-    PedSignal nsPed;
-    PedSignal ewPed;
+    CarSignal nsThrough;  // Northbound straight traffic lights
+    CarSignal nsLeft;  // Left turn signal for northbound traffic
+    CarSignal ewThrough;  // East-west direction straight traffic lights
+    CarSignal ewLeft;  // Left turn signal for east-west direction
+    PedSignal nsPed;    // Pedestrian lights from north to south
+    PedSignal ewPed;    // East-West Pedestrian Lights
 };
 
 class IntersectionController {
