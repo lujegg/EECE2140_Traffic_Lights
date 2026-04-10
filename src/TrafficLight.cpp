@@ -1,6 +1,5 @@
 // Team 9 Hayden Trent, Liang Wenxuan, Jack Lu
 // EECE2140
-
 #include <chrono>
 #include <iostream>
 #include <limits>
@@ -432,7 +431,7 @@ private:
 // Text-mode helpers (original)
 // -----------------------------------------------------------------------
 
-string toString(CarSignal s) {
+static string toString(CarSignal s) {
     switch (s) {
     case CarSignal::Red:             return "Red";
     case CarSignal::Yellow:          return "Yellow";
@@ -446,7 +445,7 @@ string toString(CarSignal s) {
     return "";
 }
 
-string toString(PedSignal s) {
+static string toString(PedSignal s) {
     switch (s) {
     case PedSignal::DontWalk:        return "DontWalk";
     case PedSignal::Walk:            return "Walk";
@@ -460,7 +459,7 @@ string toString(PedSignal s) {
 // Symbol-mode helpers (bracket display)
 // -----------------------------------------------------------------------
 
-string toSymbol(CarSignal s) {
+static string toSymbol(CarSignal s) {
     switch (s) {
     case CarSignal::Red:             return "[R] ";
     case CarSignal::Yellow:          return "[Y] ";
@@ -474,7 +473,7 @@ string toSymbol(CarSignal s) {
     return "[ ?]";
 }
 
-string toSymbol(PedSignal s) {
+static string toSymbol(PedSignal s) {
     switch (s) {
     case PedSignal::DontWalk:        return "[X] ";
     case PedSignal::Walk:            return "[W] ";
@@ -507,7 +506,7 @@ string toSymbol(PedSignal s) {
 // -----------------------------------------------------------------------
 
 // Car signal -> single char for road cells
-char carChar(CarSignal s) {
+static char carChar(CarSignal s) {
     switch (s) {
     case CarSignal::Green:            return 'G';
     case CarSignal::GreenArrow:       return 'G';
@@ -522,7 +521,7 @@ char carChar(CarSignal s) {
 }
 
 // Pedestrian signal -> single char shown inside crosswalk cells
-char pedChar(PedSignal s) {
+static char pedChar(PedSignal s) {
     switch (s) {
     case PedSignal::Walk:             return 'G';  // Go
     case PedSignal::FlashingDontWalk: return 'S';  // Stop (finishing)
@@ -533,7 +532,7 @@ char pedChar(PedSignal s) {
 }
 
 // Returns the phase name as a short string for the map header.
-string phaseName(Phase p) {
+static string phaseName(Phase p) {
     switch (p) {
     case Phase::NS_Left_Green:     return "NS Left Turn  - Green";
     case Phase::NS_Left_Yellow:    return "NS Left Turn  - Yellow";
@@ -557,7 +556,7 @@ string phaseName(Phase p) {
 // 1 char per cell, grid is square.
 //
 // Symbols:
-//   /  = grass corner
+//   /  = grass / impassable corner
 //   -  = plain road surface
 //   |  = NS road centre divider
 //   +  = centre crosshair of intersection box
@@ -581,7 +580,7 @@ string phaseName(Phase p) {
 //   Row 4 = N crosswalk row  (NS road cols only)
 //   Row 8 = S crosswalk row  (NS road cols only)
 // -----------------------------------------------------------------------
-void printMap(const IntersectionState& s, Phase phase) {
+static void printMap(const IntersectionState& s, Phase phase) {
 
     // Car signal chars (used on crosswalk stripe cells)
     char nsL = carChar(s.nsLeft);     // NS left-turn lane signal
@@ -832,4 +831,5 @@ int main() {
 
     return 0;
 }
+
 
