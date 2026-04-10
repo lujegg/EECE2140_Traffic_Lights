@@ -118,6 +118,7 @@ public:
         }
     }
 
+// Emergency mode switch: true = all lights forced red, false = return to normal
     void triggerEmergency(bool status) {
         emergencyMode = status;
         if (status) {
@@ -127,6 +128,7 @@ public:
         }
     }
 
+// Power-off mode switch: true = all lights flash red, false = return to normal
     void triggerPowerLoss(bool status) {
         powerLossMode = status;
         if (status) {
@@ -136,10 +138,15 @@ public:
         }
     }
 
-    bool isPowerLoss() const { return powerLossMode; }
+// Check if the system is currently in power outage mode or emergency mode.
+   bool isPowerLoss() const { return powerLossMode; }
     bool isEmergency() const { return emergencyMode; }
 };
 
+// Part 5: Function Implementation for User-Inputted Time
+// This function allows the user to input the times for the left-turn green light, left-turn yellow light, straight-ahead green light, straight-ahead yellow light, and all red light in sequence, and stores them in a member variable.
+// Principle: Call getValidIntInput to ensure a positive number is obtained, and then assign values ​​accordingly.    bool isPowerLoss() const { return powerLossMode; }
+    
 void IntersectionController::inputTimers() {
     leftGreenTime = getValidIntInput("Enter left green time: ");
     leftYellowTime = getValidIntInput("Enter left yellow time: ");
@@ -148,8 +155,15 @@ void IntersectionController::inputTimers() {
     allRedTime = getValidIntInput("Enter all-red time: ");
 }
 
+// Part Six: Calculate the specific color of all lights based on the current state
+// This function is a "state translator": based on the current phase and whether it's an emergency/power outage, it returns what each light should display.
+// Principle：
+// Highest priority: Power outage mode -> All lights flash red
+// Second highest priority: Emergency mode -> All lights remain red
+// Normal mode: Based on currentPhase, use a switch statement to return the corresponding light color combination.
+
 IntersectionState IntersectionController::getState() const {
-    // Priority 1: Power Loss
+// Priority 1: Power-off mode
     if (powerLossMode) {
         return {
             CarSignal::FlashingRed, CarSignal::FlashingRedArrow,
@@ -167,7 +181,7 @@ IntersectionState IntersectionController::getState() const {
         };
     }
 
-    // Normal traffic cycle
+// Normal traffic cycle: Returns the corresponding light color based on the current phase.
     switch (currentPhase) {
     case Phase::NS_Left_Green:
         return { CarSignal::Red, CarSignal::GreenArrow, CarSignal::Red, CarSignal::RedArrow, PedSignal::DontWalk, PedSignal::DontWalk };
@@ -195,19 +209,27 @@ IntersectionState IntersectionController::getState() const {
         return { CarSignal::Red, CarSignal::RedArrow, CarSignal::Red, CarSignal::RedArrow, PedSignal::DontWalk, PedSignal::DontWalk };
     }
 
+// Theoretically, this shouldn't happen, but for safety, a default value is returned.
     return { CarSignal::FlashingRed, CarSignal::FlashingRedArrow, CarSignal::FlashingRed, CarSignal::FlashingRedArrow, PedSignal::Flashing, PedSignal::Flashing };
 }
+
+
+// Part Seven: Core Update Logic
+// This function is called periodically, determining whether to switch to the next phase based on the elapsed time in the current phase.
+// Principle: Treat the duration of each phase as a "countdown." For example, in the NS_Left_Green phase, if timeInPhase >= leftGreenTime,
+// it switches to NS_Left_Yellow. After each phase times out, the entire cycle progresses step by step in a predetermined order.
+// Additionally, the pedestrian button clearing logic: Once the straight-ahead green light phase begins, the pedWaiting flag is cleared (indicating that the pedestrian has gained the opportunity to cross).
 
 void IntersectionController::update(double time) {
     if (powerLossMode || emergencyMode) return; 
 
-    // Clear ped flag if walk sign is on
-    if (currentPhase == Phase::NS_Through_Green || currentPhase == Phase::EW_Through_Green) {
+// If the current light is green for straight ahead, it means pedestrians can cross; clear the waiting sign.    if (currentPhase == Phase::NS_Through_Green || currentPhase == Phase::EW_Through_Green) {
         pedWaiting = false; 
     }
 
-    timeInPhase += time;
+    timeInPhase += time;  // Accumulate the time that has already been spent in this phase
 
+// Below is a large switch-case statement. Each case checks if the time for that phase has expired. If so, it calls changePhase to proceed to the next phase.
     switch (currentPhase) {
     case Phase::NS_Left_Green:      if (timeInPhase >= leftGreenTime) changePhase(Phase::NS_Left_Yellow); break;
     case Phase::NS_Left_Yellow:     if (timeInPhase >= leftYellowTime) changePhase(Phase::NS_Left_AllRed); break;
@@ -224,10 +246,15 @@ void IntersectionController::update(double time) {
     }
 }
 
+// Returns the current phase (for debugging comparisons)
 Phase IntersectionController::getCurrentPhase() const {
     return currentPhase;
 }
 
+
+// Part 8: Helper Functions (Converting State to Text or Simple Symbols)
+// These functions are used for output, converting enumeration types into human-readable strings or single characters.
+// Principle: switch-case statements match each enumeration value and return the corresponding descriptive text or symbol.
 string toString(CarSignal s) {
     switch (s) {
     case CarSignal::Red: return "Red";
@@ -252,6 +279,7 @@ string toString(PedSignal s) {
     return "";
 }
 
+// Returns a simple character representing the light's state: 'o' = green, '/' = yellow, '*' = blinking red, '-' = red or other
 char getSymbol(CarSignal s) {
     if (s == CarSignal::Green || s == CarSignal::GreenArrow) return 'o';
     if (s == CarSignal::Yellow || s == CarSignal::YellowArrow) return '/';
@@ -259,6 +287,9 @@ char getSymbol(CarSignal s) {
     return '-'; 
 }
 
+// Part 9: Print the current status of all lights to the screen
+// This function takes an IntersectionState structure and prints it out in a visually appealing way, allowing the user to intuitively see the current traffic light status.
+// Principle: First, print a simplified diagram represented by symbols (e.g., [o o] Through), then print a detailed text description.
 void printState(const IntersectionState& s) {
     cout << "\n======================================\n";
     cout << "NS Traffic : [" << getSymbol(s.nsThrough) << " " << getSymbol(s.nsThrough) << "] Through | [" << getSymbol(s.nsLeft) << "] Left\n";
@@ -273,11 +304,22 @@ void printState(const IntersectionState& s) {
     cout << "======================================\n\n";
 }
 
+// Part 10: Main Function (Program Entry Point and Main Loop)
+// This part of the code is responsible for:
+// 1. Creating the controller object
+// 2. Allowing the user to input the time for each stage
+// 3. Simulating the passage of time using an infinite loop, updating the state every 50ms and printing the changes
+// 4. For demonstration purposes, some events (pedestrian button pressed, emergency mode, power outage mode) are hardcoded to trigger at specific loop counts
+// Principle
+// - Using the chrono library to obtain the actual time difference, passing the past time slice to controller.update() in each loop
+// - Using sleep_for to control the loop frequency to avoid excessive CPU usage
+// - Only re-printing when the phase changes or the emergency/power outage state changes, reducing screen refreshes.
+
 int main() {
     IntersectionController controller;
     
     cout << "--- Traffic Light Controller Initialization ---\n";
-    controller.inputTimers();
+    controller.inputTimers();  // User input time
 
     auto programStartTime = chrono::steady_clock::now();
     auto lastTime = programStartTime;
@@ -286,11 +328,12 @@ int main() {
     bool lastPowerLossState = false; 
     Phase lastPrintedPhase = controller.getCurrentPhase();
 
-    printState(controller.getState());
+    printState(controller.getState());  // First print the initial state
 
-    int loopCounter = 0; // Using a counter for demo events is much more reliable
+    int loopCounter = 0; // A counter used to demo; it does not depend on actual seconds and ensures events are triggered in sequence.
 
     while (true) {
+        // Calculate how many seconds have passed since the last loop.
         auto currentTime = chrono::steady_clock::now();
         chrono::duration<double> elapsed = currentTime - lastTime;
         lastTime = currentTime;
@@ -298,20 +341,22 @@ int main() {
         // Hardcoded simulation events based on loops rather than exact float seconds
         // (Assuming ~50ms per loop: 20 loops approx 1 sec)
         if (loopCounter == 200) {
-            controller.pressPedestrianButton();
+            controller.pressPedestrianButton();    // Simulate pedestrian button
         } else if (loopCounter == 400) {
-            controller.triggerEmergency(true);
+            controller.triggerEmergency(true);    // Enter emergency mode
         } else if (loopCounter == 500) {
-            controller.triggerEmergency(false);
+            controller.triggerEmergency(false);    // Exit Emergency Mode
         } else if (loopCounter == 600) {
-            controller.triggerPowerLoss(true);
+            controller.triggerPowerLoss(true);    // Power off mode
         } else if (loopCounter == 700) {
-            controller.triggerPowerLoss(false);
+            controller.triggerPowerLoss(false);    // Power restored
         }
         loopCounter++;
 
+        // Let the controller update its internal state based on the elapsed time.
         controller.update(elapsed.count());
-
+        
+// Check for any changes: phase change, emergency status change, or power outage status change. If any, reprint.
         bool currentEmergencyState = controller.isEmergency();
         bool currentPowerLossState = controller.isPowerLoss();
 
@@ -323,9 +368,10 @@ int main() {
             lastEmergencyState = currentEmergencyState;
             lastPowerLossState = currentPowerLossState;
             
-            printState(controller.getState());
+            printState(controller.getState());    // Print the latest status
         }
 
+        // Wait 50 milliseconds to simulate a real-time system while avoiding CPU idling.
         this_thread::sleep_for(chrono::milliseconds(50));
     }
 
