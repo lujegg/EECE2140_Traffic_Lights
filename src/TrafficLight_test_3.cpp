@@ -52,21 +52,29 @@ struct IntersectionState {
     PedSignal ewPed;    // East-West Pedestrian Lights
 };
 
+// Part Four: Traffic Light Controller Class
+// This class is the core of the program. It is responsible for:
+// 1. Remembering the current stage
+// 2. Automatically switching to the next stage based on time
+// 3. Handling special situations such as pedestrian buttons, emergency vehicles, and power outages
+// Principle: This is a finite state machine. The program has a state variable (currentPhase), and the update() function is called every short interval,
+// determining whether to jump to the next state based on the length of time spent in that state. The getState() function returns the specific color of each light based on the current state (and whether it's an emergency/power outage).
 class IntersectionController {
 private:
-    Phase currentPhase = Phase::NS_Left_Green;
-    double timeInPhase = 0.0;
+    Phase currentPhase = Phase::NS_Left_Green;  // Current phase, starting from the green light for left turns from north to south
+    double timeInPhase = 0.0;                    // How many seconds has the current phase been
 
-    // Default timers
-    double leftGreenTime = 4.0;
-    double leftYellowTime = 2.0;
-    double throughGreenTime = 8.0;
-    double yellowTime = 3.0;
-    double allRedTime = 1.0;
+// Default time length (seconds), which users can modify by input.    double leftGreenTime = 4.0;
+    // Duration of left turn green light
+     double leftGreenTime = 4.0;   //Left turn green light duration
+    double leftYellowTime = 2.0;  // Left turn yellow light duration
+    double throughGreenTime = 8.0;  // Green light duration for straight traffic
+    double yellowTime = 3.0;    // Yellow light duration for straight traffic
+    double allRedTime = 1.0;   //Duration of all red (red lights in all directions)
 
-    bool pedWaiting = false;
-    bool emergencyMode = false;
-    bool powerLossMode = false; // Added to handle the power loss edge case requirement
+    bool pedWaiting = false;    //Are there any pedestrians waiting to cross the road?
+    bool emergencyMode = false;  // Is it in emergency mode (e.g., all directions are forced to turn red when an ambulance passes)?
+    bool powerLossMode = false; //  Is it in power-off mode (all lights flashing red)?
 
     // Helper to switch phase
     void changePhase(Phase next) {
@@ -75,7 +83,8 @@ private:
         // cout << "DEBUG: Phase changed to " << (int)next << endl; 
     }
 
-    // Input validation so cin doesn't crash if someone types a letter
+    // Input validation function: Prevents the program from crashing due to user input of letters
+// Principle: Use cin to read integers. If it fails (the user inputs a letter), clear the error flag, discard the erroneous input, and then prompt the user for input again.
     int getValidIntInput(const string& prompt) {
         int value;
         string badInput;
@@ -92,13 +101,16 @@ private:
         }
         return value;
     }
-
+// Allow users to customize the duration of each stage
 public:
     void inputTimers();
+// Update the controller state; the time parameter is the number of seconds that have elapsed in the past period.
     void update(double time);
+// Get the current display status of all lights
     IntersectionState getState() const;
+// Get the current phase (mainly used for debugging and determining whether there has been a change)
     Phase getCurrentPhase() const;
-
+// Pedestrian button: After pressing, you will be allowed to cross the road when the next green light for straight traffic begins.
     void pressPedestrianButton() {
         if (!pedWaiting) {
             pedWaiting = true;
