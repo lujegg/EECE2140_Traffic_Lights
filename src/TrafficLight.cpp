@@ -1,11 +1,11 @@
 // Team 9 Hayden Trent, Liang Wenxuan, Jack Lu
 // EECE2140
 
-#include <chrono>   // Time measurement utilities for real-time simulation
-#include <iostream> // Standard input and output
-#include <limits>   // numeric_limits for input cleanup
-#include <string>   // std::string
-#include <thread>   // std::this_thread::sleep_for
+#include <chrono>
+#include <iostream>
+#include <limits>
+#include <string>
+#include <thread>
 
 using namespace std;
 
@@ -13,80 +13,65 @@ using namespace std;
 // This section defines the fixed states that each signal can display.
 // Principle: enum class binds a readable state name to a single valid value,
 // so the program can use names like CarSignal::Red instead of unsafe integers.
-// This makes the code easier to read, less error-prone, and compatible with switch statements.
-
-// Vehicle traffic light states
 enum class CarSignal {
-    Red,              // Regular red light
-    Yellow,           // Regular yellow light
-    Green,            // Regular green light
-    RedArrow,         // Red arrow for protected turn lane
-    YellowArrow,      // Yellow arrow for protected turn lane
-    GreenArrow,       // Green arrow for protected turn lane
-    FlashingRed,      // Flashing red used in fault or power-loss mode
-    FlashingRedArrow  // Flashing red arrow used in fault or power-loss mode
+    Red,
+    Yellow,
+    Green,
+    RedArrow,
+    YellowArrow,
+    GreenArrow,
+    FlashingRed,
+    FlashingRedArrow
 };
 
-// Pedestrian traffic light states
+// Pedestrian traffic light states.
 enum class PedSignal {
-    DontWalk,         // Pedestrians must not cross
-    Walk,             // Pedestrians may cross
-    FlashingDontWalk, // Pedestrians should finish crossing if already in crosswalk
-    Flashing          // Generic flashing fallback for emergency / abnormal display
+    DontWalk,
+    Walk,
+    FlashingDontWalk,
+    Flashing
 };
 
 // Part 2: Defining Traffic Light Phases
-// This section lists all the stages in the traffic signal cycle.
-// Each phase corresponds to one full safe combination of car and pedestrian lights.
-// Principle: instead of managing each light independently, the program treats the
-// whole intersection as a finite state machine that moves from one safe phase to the next.
+// Each phase represents one safe configuration of the whole intersection.
+// The controller moves through these phases in order based on elapsed time.
 enum class Phase {
-    NS_Left_Green,     // North-south left-turn movement has protected green arrow
-    NS_Left_Yellow,    // North-south left-turn movement is ending
-    NS_Left_AllRed,    // All-red clearance before north-south through begins
-    NS_Through_Green,  // North-south through movement has green
-    NS_Through_Yellow, // North-south through movement is ending
-    AllRed_To_EW,      // All-red clearance before east-west movement begins
-    EW_Left_Green,     // East-west left-turn movement has protected green arrow
-    EW_Left_Yellow,    // East-west left-turn movement is ending
-    EW_Left_AllRed,    // All-red clearance before east-west through begins
-    EW_Through_Green,  // East-west through movement has green
-    EW_Through_Yellow, // East-west through movement is ending
-    AllRed_To_NS       // All-red clearance before the cycle returns to north-south
+    NS_Left_Green,
+    NS_Left_Yellow,
+    NS_Left_AllRed,
+    NS_Through_Green,
+    NS_Through_Yellow,
+    AllRed_To_EW,
+    EW_Left_Green,
+    EW_Left_Yellow,
+    EW_Left_AllRed,
+    EW_Through_Green,
+    EW_Through_Yellow,
+    AllRed_To_NS
 };
 
 // Display mode chosen by the user at startup.
-// Principle: the controller logic stays the same, but the renderer can present
-// the same intersection state in different output formats.
 enum class DisplayMode {
-    Text,   // Full word-based output
-    Symbol, // Compact bracket/symbol-based output
-    Map     // ASCII top-down intersection map
+    Text,
+    Symbol,
+    Map
 };
 
-// Part 3: Structure storing the current state of all lights
-// This struct packages the current output of the whole intersection into a single object.
-// Principle: instead of returning each light separately, the controller returns one
-// IntersectionState object that contains everything the renderer needs to display.
+// Part 3: A structure storing the current state of all lights
+// This packages the full intersection output into one object so it can be
+// returned and printed all at once.
 struct IntersectionState {
-    CarSignal nsThrough; // North-south through traffic light
-    CarSignal nsLeft;    // North-south left-turn traffic light
-    CarSignal ewThrough; // East-west through traffic light
-    CarSignal ewLeft;    // East-west left-turn traffic light
-    PedSignal nsPed;     // Pedestrian signal associated with north-south crossing
-    PedSignal ewPed;     // Pedestrian signal associated with east-west crossing
+    CarSignal nsThrough;
+    CarSignal nsLeft;
+    CarSignal ewThrough;
+    CarSignal ewLeft;
+    PedSignal nsPed;
+    PedSignal ewPed;
 };
 
-// Part 4: Input Helper Class
-// This helper class keeps user-input validation separate from the traffic controller.
-// Principle: separating input logic from control logic follows OOP design principles,
-// because each class has one main responsibility.
+// InputHelper keeps validation logic separate from controller logic.
 class InputHelper {
 public:
-    // Input validation function
-    // This prevents the program from crashing if the user types letters or invalid values.
-    // Principle: cin.fail() detects invalid input, then the input buffer is cleaned
-    // and the user is asked again until a valid positive integer is entered.
     static int getValidPositiveInt(const string& prompt) {
         int value;
 
@@ -95,18 +80,16 @@ public:
             cin >> value;
 
             if (cin.fail() || value <= 0) {
-                cin.clear(); // Clear the fail state
-                cin.ignore(numeric_limits<streamsize>::max(), '\n'); // Remove bad input
+                cin.clear();
+                cin.ignore(numeric_limits<streamsize>::max(), '\n');
                 cout << "Invalid input. Please enter a positive integer.\n";
             } else {
-                cin.ignore(numeric_limits<streamsize>::max(), '\n'); // Remove any extra characters
+                cin.ignore(numeric_limits<streamsize>::max(), '\n');
                 return value;
             }
         }
     }
 
-    // Lets the user choose how the intersection should be displayed.
-    // Principle: the same controller logic can support multiple user views.
     static DisplayMode chooseDisplayMode() {
         int choice;
 
@@ -135,56 +118,42 @@ public:
     }
 };
 
-// Part 5: Traffic Light Controller Class
-// This class is the core finite state machine for the traffic signal.
-// It is responsible for:
-// 1. Remembering the current phase
-// 2. Tracking elapsed time inside that phase
-// 3. Switching phases when timers expire
-// 4. Handling pedestrian request, emergency mode, and power-loss mode
-// Principle: the controller decides what the intersection is doing,
-// while rendering is handled elsewhere.
+// Part 4: Traffic Light Controller Class
+// This class contains the finite state machine for the traffic signal:
+// 1. It remembers the current phase.
+// 2. It tracks elapsed time inside that phase.
+// 3. It switches phases when each timer expires.
+// 4. It handles special operating modes like emergency and power loss.
 class IntersectionController {
 private:
-    Phase currentPhase = Phase::NS_Left_Green; // Starting phase of the cycle
-    double timeInPhase = 0.0;                  // Elapsed time in the current phase
+    Phase currentPhase = Phase::NS_Left_Green;
+    double timeInPhase = 0.0;
 
-    // Default time lengths in seconds.
-    // These values can be overridden by the user at startup.
-    double leftGreenTime = 4.0;     // Protected left-turn green duration
-    double leftYellowTime = 2.0;    // Protected left-turn yellow duration
-    double throughGreenTime = 8.0;  // Through movement green duration
-    double yellowTime = 3.0;        // Through movement yellow duration
-    double allRedTime = 1.0;        // All-red clearance duration
+    // Default time lengths in seconds. The user can override them at startup.
+    double leftGreenTime = 4.0;
+    double leftYellowTime = 2.0;
+    double throughGreenTime = 8.0;
+    double yellowTime = 3.0;
+    double allRedTime = 1.0;
 
-    // Special mode flags
-    bool pedWaiting = false;    // True if a pedestrian request has been made
-    bool emergencyMode = false; // True if emergency override is active
-    bool powerLossMode = false; // True if power-loss flashing mode is active
+    bool pedWaiting = false;
+    bool emergencyMode = false;
+    bool powerLossMode = false;
 
-    // Helper to change phase and reset the timer.
-    // Principle: whenever the signal moves to a new phase,
-    // the elapsed time inside that phase must start back at zero.
+    // Move to a new phase and reset the timer for that phase.
     void changePhase(Phase next) {
         currentPhase = next;
         timeInPhase = 0.0;
     }
 
 public:
-    // Allows the user to customize phase durations.
     void inputTimers();
-
-    // Updates the controller by the amount of real time that has passed.
     void update(double time);
-
-    // Returns the full light state for the current moment.
     IntersectionState getState() const;
-
-    // Returns the current phase.
     Phase getCurrentPhase() const;
 
-    // Pedestrian button logic
-    // Once pressed, the request is remembered until a through-green phase occurs.
+    // Pedestrian button request. In this version, it serves as a tracked event
+    // and is cleared once the next through-green phase arrives.
     void pressPedestrianButton() {
         if (!pedWaiting) {
             pedWaiting = true;
@@ -192,9 +161,6 @@ public:
         }
     }
 
-    // Emergency mode logic
-    // true  = force the intersection into all-red mode
-    // false = return to normal cycle
     void triggerEmergency(bool status) {
         emergencyMode = status;
         if (status) {
@@ -204,9 +170,6 @@ public:
         }
     }
 
-    // Power-loss mode logic
-    // true  = flashing red mode
-    // false = return to normal cycle
     void triggerPowerLoss(bool status) {
         powerLossMode = status;
         if (status) {
@@ -216,14 +179,10 @@ public:
         }
     }
 
-    // Getter functions for special mode checks
     bool isPowerLoss() const { return powerLossMode; }
     bool isEmergency() const { return emergencyMode; }
 };
 
-// Part 6: User-inputted phase times
-// This function asks the user to enter durations for the main parts of the cycle.
-// Principle: valid input is guaranteed through InputHelper::getValidPositiveInt().
 void IntersectionController::inputTimers() {
     leftGreenTime = InputHelper::getValidPositiveInt("Enter left green time: ");
     leftYellowTime = InputHelper::getValidPositiveInt("Enter left yellow time: ");
@@ -232,15 +191,11 @@ void IntersectionController::inputTimers() {
     allRedTime = InputHelper::getValidPositiveInt("Enter all-red time: ");
 }
 
-// Part 7: Translating the current phase into actual light outputs
-// This function is the "state translator."
-// It converts the controller's abstract phase into the actual visible car and pedestrian signals.
-// Principle:
-// Highest priority: power-loss mode
-// Second priority: emergency mode
-// Otherwise: use currentPhase to return the normal signal combination.
+// Part 5: Translating the current phase into actual light outputs
+// This is the "state translator." It binds the phase machine to the visible
+// car and pedestrian signals by returning one IntersectionState object.
 IntersectionState IntersectionController::getState() const {
-    // Priority 1: power-loss mode
+    // Highest priority: power loss mode.
     if (powerLossMode) {
         return {
             CarSignal::FlashingRed,
@@ -252,7 +207,7 @@ IntersectionState IntersectionController::getState() const {
         };
     }
 
-    // Priority 2: emergency mode
+    // Second highest priority: emergency mode.
     if (emergencyMode) {
         return {
             CarSignal::Red,
@@ -264,7 +219,7 @@ IntersectionState IntersectionController::getState() const {
         };
     }
 
-    // Normal phase-based operation
+    // Normal traffic cycle.
     switch (currentPhase) {
     case Phase::NS_Left_Green:
         return {
@@ -387,9 +342,7 @@ IntersectionState IntersectionController::getState() const {
         };
     }
 
-    // Safety fallback
-    // This should never normally be reached, but returning a flashing state
-    // makes the failure condition visible instead of undefined.
+    // Safety fallback. This should not normally be reached.
     return {
         CarSignal::FlashingRed,
         CarSignal::FlashingRedArrow,
@@ -400,27 +353,20 @@ IntersectionState IntersectionController::getState() const {
     };
 }
 
-// Part 8: Core Update Logic
-// This is the main switch-based finite state machine.
-// It checks how long the controller has been in the current phase
-// and changes to the next phase when that phase's timer expires.
-// Principle: the overall logic stays close to the original version,
-// so the phase sequence remains easy to follow.
+// Part 6: Core update logic
+// This is the main switch-based finite state machine. The logic is kept very
+// close to the original code so the phase sequence remains easy to follow.
 void IntersectionController::update(double time) {
-    // In emergency or power-loss mode, the normal cycle is paused
     if (powerLossMode || emergencyMode) {
         return;
     }
 
-    // If a through-green phase is active, any pending pedestrian request has been served
     if (currentPhase == Phase::NS_Through_Green || currentPhase == Phase::EW_Through_Green) {
         pedWaiting = false;
     }
 
-    // Accumulate elapsed time in the current phase
     timeInPhase += time;
 
-    // Check if the current phase has lasted long enough to move to the next phase
     switch (currentPhase) {
     case Phase::NS_Left_Green:
         if (timeInPhase >= leftGreenTime) changePhase(Phase::NS_Left_Yellow);
@@ -472,367 +418,384 @@ void IntersectionController::update(double time) {
     }
 }
 
-// Returns the current phase.
-// This is mainly useful for comparing whether the phase changed between loop iterations.
 Phase IntersectionController::getCurrentPhase() const {
     return currentPhase;
 }
 
-// Part 9: Rendering and Display Helpers
-// This class handles all user-visible output.
-// Principle: the controller should decide the state,
-// while the renderer decides how to display that state.
+// Part 7: Rendering and display helpers
+// These functions were moved into a dedicated renderer class so output logic
+// is separated from the traffic controller state machine.
 class IntersectionRenderer {
 private:
-    // Converts a car signal enum into readable text.
-    static string toString(CarSignal s) {
-        switch (s) {
-        case CarSignal::Red: return "Red";
-        case CarSignal::Yellow: return "Yellow";
-        case CarSignal::Green: return "Green";
-        case CarSignal::RedArrow: return "RedArrow";
-        case CarSignal::YellowArrow: return "YellowArrow";
-        case CarSignal::GreenArrow: return "GreenArrow";
-        case CarSignal::FlashingRed: return "FlashingRed";
-        case CarSignal::FlashingRedArrow: return "FlashingRedArrow";
-        }
-        return "";
+
+// -----------------------------------------------------------------------
+// Text-mode helpers (original)
+// -----------------------------------------------------------------------
+
+string toString(CarSignal s) {
+    switch (s) {
+    case CarSignal::Red:             return "Red";
+    case CarSignal::Yellow:          return "Yellow";
+    case CarSignal::Green:           return "Green";
+    case CarSignal::RedArrow:        return "RedArrow";
+    case CarSignal::YellowArrow:     return "YellowArrow";
+    case CarSignal::GreenArrow:      return "GreenArrow";
+    case CarSignal::FlashingRed:     return "FlashingRed";
+    case CarSignal::FlashingRedArrow:return "FlashingRedArrow";
+    }
+    return "";
+}
+
+string toString(PedSignal s) {
+    switch (s) {
+    case PedSignal::DontWalk:        return "DontWalk";
+    case PedSignal::Walk:            return "Walk";
+    case PedSignal::FlashingDontWalk:return "FlashingDontWalk";
+    case PedSignal::Flashing:        return "Flashing";
+    }
+    return "";
+}
+
+// -----------------------------------------------------------------------
+// Symbol-mode helpers (bracket display)
+// -----------------------------------------------------------------------
+
+string toSymbol(CarSignal s) {
+    switch (s) {
+    case CarSignal::Red:             return "[R] ";
+    case CarSignal::Yellow:          return "[Y] ";
+    case CarSignal::Green:           return "[G] ";
+    case CarSignal::RedArrow:        return "[<R]";
+    case CarSignal::YellowArrow:     return "[<Y]";
+    case CarSignal::GreenArrow:      return "[<G]";
+    case CarSignal::FlashingRed:     return "[*R]";
+    case CarSignal::FlashingRedArrow:return "[*<]";
+    }
+    return "[ ?]";
+}
+
+string toSymbol(PedSignal s) {
+    switch (s) {
+    case PedSignal::DontWalk:        return "[X] ";
+    case PedSignal::Walk:            return "[W] ";
+    case PedSignal::FlashingDontWalk:return "[~W]";
+    case PedSignal::Flashing:        return "[~~]";
+    }
+    return "[? ]";
+}
+
+// -----------------------------------------------------------------------
+// Map-mode helpers
+//
+// Symbol scheme (matches image layout):
+//
+//   /   = grass / impassable corner
+//
+//   Car signal char (every road cell, 1 char):
+//     G = Green  — go
+//     W = Yellow — caution (Warning)
+//     R = Red    — stop
+//     ~ = Flashing / emergency
+//
+//   Pedestrian signal char (crosswalk cells only, 2nd of 2 chars):
+//     G = Go   (walk)
+//     S = Stop (don't walk, or flashing don't walk)
+//
+//   Normal road cell  = 1 char  e.g. "R"
+//   Crosswalk cell    = 2 chars: carChar + pedChar  e.g. "RG" or "RS"
+//   Grass cell        = 1 char  "/"
+// -----------------------------------------------------------------------
+
+// Car signal -> single char for road cells
+char carChar(CarSignal s) {
+    switch (s) {
+    case CarSignal::Green:            return 'G';
+    case CarSignal::GreenArrow:       return 'G';
+    case CarSignal::Yellow:           return 'W';  // W = Warning/caution
+    case CarSignal::YellowArrow:      return 'W';
+    case CarSignal::Red:              return 'R';
+    case CarSignal::RedArrow:         return 'R';
+    case CarSignal::FlashingRed:      return '~';
+    case CarSignal::FlashingRedArrow: return '~';
+    }
+    return '?';
+}
+
+// Pedestrian signal -> single char shown inside crosswalk cells
+char pedChar(PedSignal s) {
+    switch (s) {
+    case PedSignal::Walk:             return 'G';  // Go
+    case PedSignal::FlashingDontWalk: return 'S';  // Stop (finishing)
+    case PedSignal::DontWalk:         return 'S';  // Stop
+    case PedSignal::Flashing:         return '~';  // Emergency
+    }
+    return '?';
+}
+
+// Returns the phase name as a short string for the map header.
+string phaseName(Phase p) {
+    switch (p) {
+    case Phase::NS_Left_Green:     return "NS Left Turn  - Green";
+    case Phase::NS_Left_Yellow:    return "NS Left Turn  - Yellow";
+    case Phase::NS_Left_AllRed:    return "All Red       - (to NS Through)";
+    case Phase::NS_Through_Green:  return "NS Through    - Green";
+    case Phase::NS_Through_Yellow: return "NS Through    - Yellow";
+    case Phase::AllRed_To_EW:      return "All Red       - (to EW Left)";
+    case Phase::EW_Left_Green:     return "EW Left Turn  - Green";
+    case Phase::EW_Left_Yellow:    return "EW Left Turn  - Yellow";
+    case Phase::EW_Left_AllRed:    return "All Red       - (to EW Through)";
+    case Phase::EW_Through_Green:  return "EW Through    - Green";
+    case Phase::EW_Through_Yellow: return "EW Through    - Yellow";
+    case Phase::AllRed_To_NS:      return "All Red       - (to NS Left)";
+    }
+    return "Unknown";
+}
+
+// -----------------------------------------------------------------------
+// printMap  –  compact 13x13 ASCII intersection map
+//
+// 1 char per cell, grid is square.
+//
+// Symbols:
+//   /  = grass corner
+//   -  = plain road surface
+//   |  = NS road centre divider
+//   +  = centre crosshair of intersection box
+//   G  = car Green  (go)   — shown on crosswalk stripe cells
+//   W  = car caution Warning (yellow)
+//   X  = car red / stop
+//   ~  = car flashing emergency
+//
+// Crosswalk stripes show the car signal of that road.
+// Pedestrian signal (G=go, S=stop) printed in summary below map.
+//
+// Grid layout (cols 0-12, rows 0-12):
+//   Col 5 = NS left-turn lane
+//   Col 6 = NS road centre divider  |
+//   Col 7 = NS through lane
+//   Col 4 = W crosswalk column  (EW road rows only)
+//   Col 8 = E crosswalk column  (EW road rows only)
+//   Row 5 = EW left-turn row
+//   Row 6 = EW road centre divider  -
+//   Row 7 = EW through row
+//   Row 4 = N crosswalk row  (NS road cols only)
+//   Row 8 = S crosswalk row  (NS road cols only)
+// -----------------------------------------------------------------------
+void printMap(const IntersectionState& s, Phase phase) {
+
+    // Car signal chars (used on crosswalk stripe cells)
+    char nsL = carChar(s.nsLeft);     // NS left-turn lane signal
+    char nsT = carChar(s.nsThrough);  // NS through lane signal
+    char ewL = carChar(s.ewLeft);     // EW left-turn lane signal
+    char ewT = carChar(s.ewThrough);  // EW through lane signal
+
+    // Ped signal chars (printed in summary, not in grid)
+    // ewPed -> N/S crosswalks  (peds cross the EW road)
+    // nsPed -> W/E crosswalks  (peds cross the NS road)
+    char ewP = pedChar(s.ewPed);
+    char nsP = pedChar(s.nsPed);
+
+    // Grid: 13 x 13, single char per cell
+    const int SZ = 13;
+    char g[SZ][SZ];
+
+    // Column indices for NS road
+    const int CL = 5;  // NS left-turn lane col
+    const int CD = 6;  // NS centre divider col
+    const int CT = 7;  // NS through lane col
+
+    // Row indices for EW road
+    const int RL = 5;  // EW left-turn row
+    const int RD = 6;  // EW centre divider row
+    const int RT = 7;  // EW through row
+
+    // Crosswalk positions (single stripe row/col each)
+    const int RN = 4;  // N crosswalk row (on NS cols, just above EW band)
+    const int RS = 8;  // S crosswalk row (on NS cols, just below EW band)
+    const int CW = 4;  // W crosswalk col (on EW rows, just left of NS road)
+    const int CE = 8;  // E crosswalk col (on EW rows, just right of NS road)
+
+    // Helper: safe set
+    auto set = [&](int r, int c, char ch) {
+        if (r >= 0 && r < SZ && c >= 0 && c < SZ) g[r][c] = ch;
+    };
+
+    // 1. Fill everything with grass
+    for (int r = 0; r < SZ; r++)
+        for (int c = 0; c < SZ; c++)
+            g[r][c] = '/';
+
+    // 2. NS road strip: cols CL, CD, CT for all rows
+    for (int r = 0; r < SZ; r++) {
+        set(r, CL, '-');
+        set(r, CD, '|');
+        set(r, CT, '-');
     }
 
-    // Converts a pedestrian signal enum into readable text.
-    static string toString(PedSignal s) {
-        switch (s) {
-        case PedSignal::DontWalk: return "DontWalk";
-        case PedSignal::Walk: return "Walk";
-        case PedSignal::FlashingDontWalk: return "FlashingDontWalk";
-        case PedSignal::Flashing: return "Flashing";
-        }
-        return "";
+    // 3. EW road strip: rows RL, RD, RT for all cols
+    for (int c = 0; c < SZ; c++) {
+        set(RL, c, '-');
+        set(RD, c, '-');
+        set(RT, c, '-');
     }
 
-    // Converts a car signal into a compact bracket symbol for symbol display mode.
-    static string toSymbol(CarSignal s) {
-        switch (s) {
-        case CarSignal::Red: return "[R] ";
-        case CarSignal::Yellow: return "[Y] ";
-        case CarSignal::Green: return "[G] ";
-        case CarSignal::RedArrow: return "[<R]";
-        case CarSignal::YellowArrow: return "[<Y]";
-        case CarSignal::GreenArrow: return "[<G]";
-        case CarSignal::FlashingRed: return "[*R]";
-        case CarSignal::FlashingRedArrow: return "[*<]";
-        }
-        return "[ ?]";
-    }
+    // 4. Intersection box interior: rows RL-RT, cols CL-CT  -> all '-', centre '+'
+    for (int r = RL; r <= RT; r++)
+        for (int c = CL; c <= CT; c++)
+            set(r, c, '-');
+    set(RD, CD, '+');
 
-    // Converts a pedestrian signal into a compact bracket symbol for symbol display mode.
-    static string toSymbol(PedSignal s) {
-        switch (s) {
-        case PedSignal::DontWalk: return "[X] ";
-        case PedSignal::Walk: return "[W] ";
-        case PedSignal::FlashingDontWalk: return "[~W]";
-        case PedSignal::Flashing: return "[~~]";
-        }
-        return "[? ]";
-    }
+    // 5. N crosswalk (on NS road cols, row RN) — car signal of NS road
+    set(RN, CL, nsL);
+    set(RN, CD, '|');  // divider stays
+    set(RN, CT, nsT);
 
-    // Converts a car signal into a single-character map symbol for map mode.
-    static char carChar(CarSignal s) {
-        switch (s) {
-        case CarSignal::Green:
-        case CarSignal::GreenArrow:
-            return 'G';
-        case CarSignal::Yellow:
-        case CarSignal::YellowArrow:
-            return 'W';
-        case CarSignal::Red:
-        case CarSignal::RedArrow:
-            return 'X';
-        case CarSignal::FlashingRed:
-        case CarSignal::FlashingRedArrow:
-            return '~';
-        }
-        return '?';
-    }
+    // 6. S crosswalk (on NS road cols, row RS) — car signal of NS road
+    set(RS, CL, nsL);
+    set(RS, CD, '|');
+    set(RS, CT, nsT);
 
-    // Converts a pedestrian signal into a single-character map summary symbol.
-    static char pedChar(PedSignal s) {
-        switch (s) {
-        case PedSignal::Walk:
-            return 'G';
-        case PedSignal::FlashingDontWalk:
-        case PedSignal::DontWalk:
-            return 'S';
-        case PedSignal::Flashing:
-            return '~';
-        }
-        return '?';
-    }
+    // 7. W crosswalk (on EW road rows, col CW) — car signal of EW road
+    set(RL, CW, ewL);
+    set(RD, CW, '-');  // divider row stays '-'
+    set(RT, CW, ewT);
 
-    // Converts a phase into a short readable title for map display.
-    static string phaseName(Phase p) {
-        switch (p) {
-        case Phase::NS_Left_Green: return "NS Left Turn  - Green";
-        case Phase::NS_Left_Yellow: return "NS Left Turn  - Yellow";
-        case Phase::NS_Left_AllRed: return "All Red       - (to NS Through)";
-        case Phase::NS_Through_Green: return "NS Through    - Green";
-        case Phase::NS_Through_Yellow: return "NS Through    - Yellow";
-        case Phase::AllRed_To_EW: return "All Red       - (to EW Left)";
-        case Phase::EW_Left_Green: return "EW Left Turn  - Green";
-        case Phase::EW_Left_Yellow: return "EW Left Turn  - Yellow";
-        case Phase::EW_Left_AllRed: return "All Red       - (to EW Through)";
-        case Phase::EW_Through_Green: return "EW Through    - Green";
-        case Phase::EW_Through_Yellow: return "EW Through    - Yellow";
-        case Phase::AllRed_To_NS: return "All Red       - (to NS Left)";
-        }
-        return "Unknown";
-    }
+    // 8. E crosswalk (on EW road rows, col CE) — car signal of EW road
+    set(RL, CE, ewL);
+    set(RD, CE, '-');
+    set(RT, CE, ewT);
 
-    // Text mode output
-    // Prints the full state in detailed word-based format.
-    static void printTextState(const IntersectionState& s) {
+    // 9. Cardinal labels on road surface
+    set(1,    CD, 'N');
+    set(SZ-2, CD, 'S');
+    set(RD,   1,  'W');
+    set(RD,   SZ-2, 'E');
+
+    // Print
+    cout << "\n  " << phaseName(phase) << "\n\n";
+    cout << "  Cars: G=go W=caution X=stop ~=flash\n";
+    cout << "  Peds: G=go S=stop  (crosswalk signal shown below map)\n\n";
+
+    for (int r = 0; r < SZ; r++) {
+        cout << "  ";
+        for (int c = 0; c < SZ; c++) cout << g[r][c];
+        if (r == RN) cout << "  <- N xwalk (ewPed=" << toString(s.ewPed) << " -> ped:" << ewP << ")";
+        if (r == RS) cout << "  <- S xwalk (ewPed=" << toString(s.ewPed) << " -> ped:" << ewP << ")";
+        if (r == RD) cout << "  W xwalk(nsPed -> ped:" << nsP << ")  E xwalk(nsPed -> ped:" << nsP << ")";
+        cout << "\n";
+    }
+    cout << "\n" << string(SZ + 4, '-') << "\n";
+}
+
+
+
+// -----------------------------------------------------------------------
+// Legend printouts
+// -----------------------------------------------------------------------
+
+static void printSymbolLegend() {
+    cout << "\n=== SYMBOL LEGEND ===\n";
+    cout << "  Car Signals:\n";
+    cout << "    [R]   = Red (stop)\n";
+    cout << "    [Y]   = Yellow (caution)\n";
+    cout << "    [G]   = Green (go)\n";
+    cout << "    [<R]  = Red Arrow    (left-turn blocked)\n";
+    cout << "    [<Y]  = Yellow Arrow (left-turn caution)\n";
+    cout << "    [<G]  = Green Arrow  (left-turn go)\n";
+    cout << "    [*R]  = Flashing Red       (emergency stop)\n";
+    cout << "    [*<]  = Flashing Red Arrow (emergency left-turn stop)\n";
+    cout << "\n";
+    cout << "  Pedestrian Signals:\n";
+    cout << "    [X]   = Don't Walk\n";
+    cout << "    [W]   = Walk\n";
+    cout << "    [~W]  = Flashing Don't Walk (finish crossing)\n";
+    cout << "    [~~]  = Flashing (emergency)\n";
+    cout << "=====================\n\n";
+}
+
+static void printMapLegend() {
+    cout << "\n=== MAP LEGEND ===\n";
+    cout << "  /  = grass (impassable corner)\n";
+    cout << "  -  = road surface\n";
+    cout << "  |  = NS road centre divider\n";
+    cout << "  +  = intersection centre\n";
+    cout << "  Car signal (crosswalk cells): G=go  W=caution  X=stop  ~=emergency\n";
+    cout << "  Ped signal (shown beside map): G=go  S=stop\n";
+    cout << "  N/S crosswalks cross the EW road (controlled by ewPed).\n";
+    cout << "  W/E crosswalks cross the NS road (controlled by nsPed).\n";
+    cout << "==================\n\n";
+}
+public:
+// -----------------------------------------------------------------------
+// Legend printout handler
+// -----------------------------------------------------------------------
+static void printLegend(DisplayMode mode) {
+    if (mode == DisplayMode::Symbol) {
+        printSymbolLegend();
+    } else if (mode == DisplayMode::Map) {
+        printMapLegend();
+    }
+}
+// -----------------------------------------------------------------------
+// printState — dispatches to the chosen display mode
+// -----------------------------------------------------------------------
+
+static void printState(const IntersectionState& s, DisplayMode mode, Phase phase) {
+    if (mode == DisplayMode::Text) {
         cout << "NS Through: " << toString(s.nsThrough) << "\n";
-        cout << "NS Left   : " << toString(s.nsLeft) << "\n";
+        cout << "NS Left   : " << toString(s.nsLeft)    << "\n";
         cout << "EW Through: " << toString(s.ewThrough) << "\n";
-        cout << "EW Left   : " << toString(s.ewLeft) << "\n";
-        cout << "NS Ped    : " << toString(s.nsPed) << "\n";
-        cout << "EW Ped    : " << toString(s.ewPed) << "\n";
+        cout << "EW Left   : " << toString(s.ewLeft)    << "\n";
+        cout << "NS Ped    : " << toString(s.nsPed)     << "\n";
+        cout << "EW Ped    : " << toString(s.ewPed)     << "\n";
         cout << "--------------------------\n";
-    }
 
-    // Symbol mode output
-    // Prints the same state using compact bracket symbols.
-    static void printSymbolState(const IntersectionState& s) {
+    } else if (mode == DisplayMode::Symbol) {
         cout << "          | NS Through | NS Left | EW Through | EW Left |\n";
         cout << "  Cars    |    "
              << toSymbol(s.nsThrough) << "    |   "
-             << toSymbol(s.nsLeft) << "  |    "
+             << toSymbol(s.nsLeft)    << "  |    "
              << toSymbol(s.ewThrough) << "    |   "
-             << toSymbol(s.ewLeft) << "  |\n";
+             << toSymbol(s.ewLeft)    << "  |\n";
         cout << "          | NS Ped     |         | EW Ped     |         |\n";
         cout << "  Peds    |    "
              << toSymbol(s.nsPed) << "    |         |    "
              << toSymbol(s.ewPed) << "    |         |\n";
         cout << "-------------------------------------------------------------\n";
+
+    } else {
+        // Map mode
+        printMap(s, phase);
     }
+}
 
-    // Map mode output
-    // Prints a top-down ASCII map of the intersection.
-    // Principle: the grid is drawn first, then special cells are overwritten
-    // with the current light states.
-    static void printMapState(const IntersectionState& s, Phase phase) {
-        char nsL = carChar(s.nsLeft);
-        char nsT = carChar(s.nsThrough);
-        char ewL = carChar(s.ewLeft);
-        char ewT = carChar(s.ewThrough);
-
-        char ewP = pedChar(s.ewPed);
-        char nsP = pedChar(s.nsPed);
-
-        const int size = 13;
-        char grid[size][size];
-
-        const int colLeft = 5;
-        const int colDivider = 6;
-        const int colThrough = 7;
-
-        const int rowLeft = 5;
-        const int rowDivider = 6;
-        const int rowThrough = 7;
-
-        const int rowNorthCrosswalk = 4;
-        const int rowSouthCrosswalk = 8;
-        const int colWestCrosswalk = 4;
-        const int colEastCrosswalk = 8;
-
-        // Small helper for safely writing a character into the map grid.
-        auto setCell = [&](int row, int col, char ch) {
-            if (row >= 0 && row < size && col >= 0 && col < size) {
-                grid[row][col] = ch;
-            }
-        };
-
-        // Fill the whole map with grass first.
-        for (int row = 0; row < size; row++) {
-            for (int col = 0; col < size; col++) {
-                grid[row][col] = '/';
-            }
-        }
-
-        // Draw the north-south road
-        for (int row = 0; row < size; row++) {
-            setCell(row, colLeft, '-');
-            setCell(row, colDivider, '|');
-            setCell(row, colThrough, '-');
-        }
-
-        // Draw the east-west road
-        for (int col = 0; col < size; col++) {
-            setCell(rowLeft, col, '-');
-            setCell(rowDivider, col, '-');
-            setCell(rowThrough, col, '-');
-        }
-
-        // Draw the intersection box
-        for (int row = rowLeft; row <= rowThrough; row++) {
-            for (int col = colLeft; col <= colThrough; col++) {
-                setCell(row, col, '-');
-            }
-        }
-        setCell(rowDivider, colDivider, '+');
-
-        // Draw north crosswalk signals
-        setCell(rowNorthCrosswalk, colLeft, nsL);
-        setCell(rowNorthCrosswalk, colDivider, '|');
-        setCell(rowNorthCrosswalk, colThrough, nsT);
-
-        // Draw south crosswalk signals
-        setCell(rowSouthCrosswalk, colLeft, nsL);
-        setCell(rowSouthCrosswalk, colDivider, '|');
-        setCell(rowSouthCrosswalk, colThrough, nsT);
-
-        // Draw west crosswalk signals
-        setCell(rowLeft, colWestCrosswalk, ewL);
-        setCell(rowDivider, colWestCrosswalk, '-');
-        setCell(rowThrough, colWestCrosswalk, ewT);
-
-        // Draw east crosswalk signals
-        setCell(rowLeft, colEastCrosswalk, ewL);
-        setCell(rowDivider, colEastCrosswalk, '-');
-        setCell(rowThrough, colEastCrosswalk, ewT);
-
-        // Add simple direction labels
-        setCell(1, colDivider, 'N');
-        setCell(size - 2, colDivider, 'S');
-        setCell(rowDivider, 1, 'W');
-        setCell(rowDivider, size - 2, 'E');
-
-        cout << "\n  " << phaseName(phase) << "\n\n";
-        cout << "  Cars: G=go W=caution X=stop ~=flash\n";
-        cout << "  Peds: G=go S=stop  (crosswalk signal shown below map)\n\n";
-
-        for (int row = 0; row < size; row++) {
-            cout << "  ";
-            for (int col = 0; col < size; col++) {
-                cout << grid[row][col];
-            }
-
-            if (row == rowNorthCrosswalk) {
-                cout << "  <- N xwalk (ewPed=" << toString(s.ewPed) << " -> ped:" << ewP << ")";
-            }
-            if (row == rowSouthCrosswalk) {
-                cout << "  <- S xwalk (ewPed=" << toString(s.ewPed) << " -> ped:" << ewP << ")";
-            }
-            if (row == rowDivider) {
-                cout << "  W xwalk(nsPed -> ped:" << nsP << ")  E xwalk(nsPed -> ped:" << nsP << ")";
-            }
-            cout << "\n";
-        }
-
-        cout << "\n" << string(size + 4, '-') << "\n";
-    }
-
-public:
-    // Prints a legend for the selected display mode.
-    static void printLegend(DisplayMode mode) {
-        if (mode == DisplayMode::Symbol) {
-            cout << "\n=== SYMBOL LEGEND ===\n";
-            cout << "  Car Signals:\n";
-            cout << "    [R]   = Red (stop)\n";
-            cout << "    [Y]   = Yellow (caution)\n";
-            cout << "    [G]   = Green (go)\n";
-            cout << "    [<R]  = Red Arrow    (left-turn blocked)\n";
-            cout << "    [<Y]  = Yellow Arrow (left-turn caution)\n";
-            cout << "    [<G]  = Green Arrow  (left-turn go)\n";
-            cout << "    [*R]  = Flashing Red       (emergency stop)\n";
-            cout << "    [*<]  = Flashing Red Arrow (emergency left-turn stop)\n\n";
-            cout << "  Pedestrian Signals:\n";
-            cout << "    [X]   = Don't Walk\n";
-            cout << "    [W]   = Walk\n";
-            cout << "    [~W]  = Flashing Don't Walk\n";
-            cout << "    [~~]  = Flashing (emergency)\n";
-            cout << "=====================\n\n";
-        } else if (mode == DisplayMode::Map) {
-            cout << "\n=== MAP LEGEND ===\n";
-            cout << "  /  = grass (impassable corner)\n";
-            cout << "  -  = road surface\n";
-            cout << "  |  = NS road centre divider\n";
-            cout << "  +  = intersection centre\n";
-            cout << "  Car signal chars: G=go  W=caution  X=stop  ~=emergency\n";
-            cout << "  Ped summary chars: G=go  S=stop\n";
-            cout << "  N/S crosswalks cross the EW road (controlled by ewPed).\n";
-            cout << "  W/E crosswalks cross the NS road (controlled by nsPed).\n";
-            cout << "==================\n\n";
-        }
-    }
-
-    // Main renderer dispatch
-    // Chooses which display format to use for the same intersection state.
-    static void printState(const IntersectionState& state, DisplayMode mode, Phase phase) {
-        if (mode == DisplayMode::Text) {
-            printTextState(state);
-        } else if (mode == DisplayMode::Symbol) {
-            printSymbolState(state);
-        } else {
-            printMapState(state, phase);
-        }
-    }
 };
 
-// Part 10: Main Function (Program Entry Point and Main Loop)
-// This part of the code is responsible for:
-// 1. Printing the initialization banner
-// 2. Letting the user choose a display mode
-// 3. Creating the controller object
-// 4. Allowing the user to input the time for each phase
-// 5. Running the real-time simulation loop
-// 6. Demonstrating pedestrian request, emergency mode, and power-loss mode
-// Principle:
-// - chrono measures real elapsed time
-// - update(elapsedTime) advances the controller
-// - sleep_for keeps the loop from consuming too much CPU
-// - the program only reprints when something important changes
 int main() {
     cout << "--- Traffic Light Controller Initialization ---\n";
 
-    // Ask the user how they want the state displayed
     DisplayMode displayMode = InputHelper::chooseDisplayMode();
-
-    // Print the legend for the selected display mode if needed
     IntersectionRenderer::printLegend(displayMode);
 
-    // Create the traffic light controller
     IntersectionController controller;
-
-    // Ask the user to enter custom timer values
     controller.inputTimers();
 
-    // Save the current time so future loops can calculate elapsed time
     auto lastTime = chrono::steady_clock::now();
 
-    // Store previous system states so the screen only updates on changes
     bool lastEmergencyState = controller.isEmergency();
     bool lastPowerLossState = controller.isPowerLoss();
     Phase lastPrintedPhase = controller.getCurrentPhase();
 
-    // Print the initial state of the intersection
-    IntersectionRenderer::printState(
-        controller.getState(),
-        displayMode,
-        controller.getCurrentPhase());
+    IntersectionRenderer::printState(controller.getState(), displayMode, controller.getCurrentPhase());
 
-    // Demo loop counter
-    // This is used to trigger sample events in sequence for testing purposes.
     int loopCounter = 0;
 
     while (true) {
-        // Measure real elapsed time since the last loop
         auto currentTime = chrono::steady_clock::now();
         chrono::duration<double> elapsed = currentTime - lastTime;
         lastTime = currentTime;
 
-        // Demo events carried over from the richer controller example
-        // These are loop-based triggers for testing special modes.
+        // Demo events carried over from the richer controller example.
         if (loopCounter == 200) {
             controller.pressPedestrianButton();
         } else if (loopCounter == 400) {
@@ -844,21 +807,16 @@ int main() {
         } else if (loopCounter == 700) {
             controller.triggerPowerLoss(false);
         }
-
         loopCounter++;
 
-        // Update the controller based on the real elapsed time
         controller.update(elapsed.count());
 
-        // Read current special mode flags
         bool currentEmergencyState = controller.isEmergency();
         bool currentPowerLossState = controller.isPowerLoss();
 
-        // Reprint only if phase or special mode changed
         if (controller.getCurrentPhase() != lastPrintedPhase ||
             currentEmergencyState != lastEmergencyState ||
             currentPowerLossState != lastPowerLossState) {
-
             lastPrintedPhase = controller.getCurrentPhase();
             lastEmergencyState = currentEmergencyState;
             lastPowerLossState = currentPowerLossState;
@@ -869,7 +827,6 @@ int main() {
                 controller.getCurrentPhase());
         }
 
-        // Pause briefly to simulate real-time operation without wasting CPU
         this_thread::sleep_for(chrono::milliseconds(50));
     }
 
